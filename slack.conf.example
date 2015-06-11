@@ -1,0 +1,10 @@
+# SlackArchiver configuration file
+# syntax is YAML
+
+# mandatory config items
+SLACK_TOKEN: 'bla-bla-bla-token'
+ARCHIVE_DIR: '.'
+
+# optional config items
+DEBUG: 'True' #optional
+LOGFILE: 'slack-archiver.log'
