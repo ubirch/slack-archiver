@@ -104,8 +104,6 @@ class SlackArchiver(object):
 
         print ("Channel ID:" + channel_id)
         print ("Channel Name:" + channel_name)
-        print ("History type: ")
-        print ( type(self.history))
 
 
         # if channel is found in history then
@@ -126,24 +124,13 @@ class SlackArchiver(object):
             # use this timestamp as oldest
             iterator = iterator + 1
 
-
-            print "Latest: " + str(ts_latest)
-
-            print "This is attempt number: " + str(iterator) + " for channel: " + channel_name
+            print "This is iteration number: " + str(iterator) + " for channel: " + channel_name
 
             # request channel history
             response = self.slack_client.api_call("channels.history", token=self.token, channel=channel_id, oldest=ts_oldest, latest=ts_latest, count=self.sliding_window, inclusive=0)
 
             # parse response JSON
             history = json.loads(response)
-
-
-
-            try:
-                print "History status: " + str(history['has_more'])
-            except:
-                print "ERROR with response:"
-                print history
 
 
             # reset the has more status
@@ -155,26 +142,21 @@ class SlackArchiver(object):
             # the actual messages
             messages = history['messages']
 
+            if debug:
+                print "Found " + str(len(messages)) + " new messages in " + channel_name
+                
             for entry in messages:
 
                 # find the oldest entry in current response
                 if float(entry['ts']) < ts_latest:
-                    print "Time stamp updated"
                     ts_latest = float(entry['ts'])
-                else:
-                    print "Entry TS: " + str(entry['ts']) + " latest: " + str(ts_latest)
 
+                # update the state keeping entry
                 if self.history[channel_id] < entry['ts']:
-                    print "History updated"
                     self.history[channel_id] = entry['ts']
 
                 # append entry to list so we can write out in reverse order
                 logentry.append(self.parse_history_entry(entry, channel_id))
-
-
-            # now write out the entries
-
-
 
         # finally update the history keeping with the newest entry
         while len(logentry) > 0:
@@ -222,13 +204,11 @@ class SlackArchiver(object):
                 fp.close()
                 self.history = hist
         except ValueError:
-            print "print can't find valid JSON structure in file"
+            logging.info("can't find valid JSON structure in channel history file")
 
         except IOError:
             print "history file not found. Will create new one"
 
-        print ( type(hist))
-        print (hist)
 
 
     def write_channel_timestamps(self):
@@ -273,7 +253,6 @@ if __name__ == "__main__":
     config = yaml.load(file('slack.conf', 'r'))
     debug = config["DEBUG"]
     archiver = SlackArchiver(config)
-    files_currently_downloading = []
 
     if config.has_key("DAEMON"):
         if config["DAEMON"]:
