@@ -23,7 +23,7 @@ class SlackArchiver(object):
         self.channels = dict()
         self.users = dict()
         self.history = dict()
-        self.sliding_window = 10
+        self.sliding_window = 50
 
 
         self.archive_root = config['ARCHIVE_DIR']
@@ -97,6 +97,8 @@ class SlackArchiver(object):
         has_more = True
         iterator = 0
 
+        logentry = list()
+
         channel = self.channels[channel_id]
         channel_name = channel['name']
 
@@ -116,6 +118,8 @@ class SlackArchiver(object):
             self.history[channel_id] = 0
             ts_oldest = 0
 
+        # open the archive file for appending
+        archiveFile =  codecs.open(channel_name + ".archive.txt","a+", "utf-8")
 
         while has_more:
             # if the channel_id is found in the history dictionary
@@ -133,8 +137,7 @@ class SlackArchiver(object):
             # parse response JSON
             history = json.loads(response)
 
-            # open the archive file for appending
-            archiveFile =  codecs.open(channel_name + ".archive.txt","a+", "utf-8")
+
 
             try:
                 print "History status: " + str(history['has_more'])
@@ -165,14 +168,19 @@ class SlackArchiver(object):
                     print "History updated"
                     self.history[channel_id] = entry['ts']
 
+                # append entry to list so we can write out in reverse order
+                logentry.append(self.parse_history_entry(entry, channel_id))
 
-                logentry = self.parse_history_entry(entry, channel_id)
-                archiveFile.write(logentry + "\n")
 
-            archiveFile.close()
+            # now write out the entries
+
+
 
         # finally update the history keeping with the newest entry
+        while len(logentry) > 0:
+            archiveFile.write(logentry.pop() + "\n")
 
+        archiveFile.close()
 
 
     def parse_history_entry(self, history_entry, channel_id):
