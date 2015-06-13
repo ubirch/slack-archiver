@@ -1,1 +1,4 @@
 slack.conf
+channel.history
+*.archive.txt
+*.log

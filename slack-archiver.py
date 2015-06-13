@@ -22,6 +22,9 @@ class SlackArchiver(object):
         self.slack_client = None
         self.channels = dict()
         self.users = dict()
+        self.history = dict()
+        self.sliding_window = 10
+
 
         self.archive_root = config['ARCHIVE_DIR']
         dir = os.path.dirname(self.archive_root)
@@ -31,11 +34,16 @@ class SlackArchiver(object):
         except:
             os.mkdir(dir)
 
+        self.load_channel_timestamps()
+
     def connect(self):
         """Convenience method that creates Server instance"""
         print "Connecting with " + self.token
         self.slack_client = SlackClient(self.token)
+
+
     def start(self):
+        """Connecting to the Slack API fetching all channels for archiving"""
         self.connect()
         all_channels = self.get_channels()
         all_users = self.get_users()
@@ -45,13 +53,15 @@ class SlackArchiver(object):
             print "Archiving channel: " + a_channel
             self.archive_channel(a_channel)
 
+        # after all channels have been archived
+        # write out the timestamps to the history file
+        self.write_channel_timestamps()
+
     def get_users(self):
+
+        """Get the list of users and store them in dictionary for easier use"""
         # https://api.slack.com/methods/users.list
         response = self.slack_client.api_call("users.list", token=self.token)
-        if debug:
-            logging.info("User List")
-            logging.info(response)
-
 
         members = json.loads(response)
         users = members['members']
@@ -61,9 +71,10 @@ class SlackArchiver(object):
 
 
     def get_channels(self):
+        """Get the list of channels and store name & id in dictionary for easier use"""
         # https://api.slack.com/methods/channels.info
         params = {"token": self.token}
-        print self.slack_client.api_call("channels.info", channel="1234567890")
+
 
         channel_list = self.slack_client.api_call("channels.list",token=self.token )
         if debug:
@@ -79,28 +90,94 @@ class SlackArchiver(object):
             self.channels[channel_id] = chanel
 
     def archive_channel(self, channel_id):
-        response = self.slack_client.api_call("channels.history", token=self.token, channel=channel_id, )
-        history = json.loads(response)
+        """fetches history of a given channel and writes the entries out to a file"""
+
+        channel_id_latest = 1.0
+        response = ""
+        has_more = True
+        iterator = 0
 
         channel = self.channels[channel_id]
         channel_name = channel['name']
 
+        print ("Channel ID:" + channel_id)
+        print ("Channel Name:" + channel_name)
+        print ("History type: ")
+        print ( type(self.history))
 
-        archiveFile = file = codecs.open(channel_name + ".text","w", "utf-8")
 
-        if debug:
-            logging.info("History: ")
-            logging.info(response)
+        # if channel is found in history then
+        # use timestamp from there
+        # otherwise start with history = 0
+        ts_latest = float(time.time())
+        if channel_id in self.history:
+            ts_oldest = self.history[channel_id]
+        else:
+            self.history[channel_id] = 0
+            ts_oldest = 0
 
-        messages = history['messages']
 
-        for entry in messages:
-            logentry = self.parse_history_entry(entry, channel_id)
-            archiveFile.write(logentry + "\n")
+        while has_more:
+            # if the channel_id is found in the history dictionary
+            # use this timestamp as oldest
+            iterator = iterator + 1
 
-        archiveFile.close()
+
+            print "Latest: " + str(ts_latest)
+
+            print "This is attempt number: " + str(iterator) + " for channel: " + channel_name
+
+            # request channel history
+            response = self.slack_client.api_call("channels.history", token=self.token, channel=channel_id, oldest=ts_oldest, latest=ts_latest, count=self.sliding_window, inclusive=0)
+
+            # parse response JSON
+            history = json.loads(response)
+
+            # open the archive file for appending
+            archiveFile =  codecs.open(channel_name + ".archive.txt","a+", "utf-8")
+
+            try:
+                print "History status: " + str(history['has_more'])
+            except:
+                print "ERROR with response:"
+                print history
+
+
+            # reset the has more status
+            if history['has_more']:
+                has_more = True
+            else:
+                has_more = False
+
+            # the actual messages
+            messages = history['messages']
+
+            for entry in messages:
+
+                # find the oldest entry in current response
+                if float(entry['ts']) < ts_latest:
+                    print "Time stamp updated"
+                    ts_latest = float(entry['ts'])
+                else:
+                    print "Entry TS: " + str(entry['ts']) + " latest: " + str(ts_latest)
+
+                if self.history[channel_id] < entry['ts']:
+                    print "History updated"
+                    self.history[channel_id] = entry['ts']
+
+
+                logentry = self.parse_history_entry(entry, channel_id)
+                archiveFile.write(logentry + "\n")
+
+            archiveFile.close()
+
+        # finally update the history keeping with the newest entry
+
+
 
     def parse_history_entry(self, history_entry, channel_id):
+        """parse a single history line and decode username, timestamp etc. """
+
         logentry = ""
 
         if history_entry['type'] == "message":
@@ -109,8 +186,11 @@ class SlackArchiver(object):
 
             if "user" in history_entry:
                 user_id = history_entry['user']
-                user = self.users[user_id]
-                username = user['name']
+                try:
+                    user = self.users[user_id]
+                    username = user['name']
+                except KeyError:
+                    username = user_id
             else:
                 username = "none"
 
@@ -118,18 +198,40 @@ class SlackArchiver(object):
             channel_name = channel['name']
 
 
-            logentry = timestamp +": <" + username + ">[" + channel_name + "] " + history_entry['text']
+            logentry = timestamp +": <" + username + "> " + history_entry['text']
         else:
             print "History type: " + history_entry['type'] + " => " + history_entry['text']
 
         return logentry
 
 
+    def load_channel_timestamps(self):
+
+        hist = None
+        try:
+            with open('channel.history', 'r') as fp:
+                hist = json.load(fp)
+                fp.close()
+                self.history = hist
+        except ValueError:
+            print "print can't find valid JSON structure in file"
+
+        except IOError:
+            print "history file not found. Will create new one"
+
+        print ( type(hist))
+        print (hist)
 
 
+    def write_channel_timestamps(self):
+
+        with open('channel.history', 'w') as outfile:
+                json.dump(self.history, outfile )
+                outfile.close()
 
 
     def format_ts(self, ts):
+        """convert the epoch time stamps into a human readable format"""
         timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(float(ts)))
         return timestamp
 

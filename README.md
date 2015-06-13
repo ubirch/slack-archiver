@@ -29,9 +29,13 @@ Installation
         vi slack.conf
           SLACK_TOKEN: "xoxb-11111111111-222222222222222"
 
+4. Run the archiver
+
+        python slack-archiver.py
+
+
 *Note*: At this point slack-archiver is ready to run.
 
 
 ####Todo:
-This is just the first prove of concept. It's completely lacking error handling
-or statekeeping of the archive.
+Latest version can writes channel timestamps into a file to pick up where it has left of before.
