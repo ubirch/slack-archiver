@@ -11,6 +11,8 @@ import json
 import os
 import sys
 import codecs
+import re
+
 from slackclient import SlackClient
 
 
@@ -23,7 +25,7 @@ class SlackArchiver(object):
         self.channels = dict()
         self.users = dict()
         self.history = dict()
-        self.sliding_window = 50
+        self.sliding_window = 100
 
 
         self.archive_root = config['ARCHIVE_DIR']
@@ -64,6 +66,10 @@ class SlackArchiver(object):
         response = self.slack_client.api_call("users.list", token=self.token)
 
         members = json.loads(response)
+        if debug:
+            logging.info("User list")
+            logging.info(json.dumps(members, indent=4, sort_keys=True))
+
         users = members['members']
 
         for user in users:
@@ -77,12 +83,16 @@ class SlackArchiver(object):
 
 
         channel_list = self.slack_client.api_call("channels.list",token=self.token )
-        if debug:
-            logging.info("Channel List")
-            logging.info(channel_list)
+
 
 
         data = json.loads(channel_list)
+
+
+        if debug:
+            logging.info("Channel List")
+            logging.info(json.dumps(data, indent=4, sort_keys=True))
+
 
         channels = data['channels']
         for chanel in channels:
@@ -144,7 +154,7 @@ class SlackArchiver(object):
 
             if debug:
                 print "Found " + str(len(messages)) + " new messages in " + channel_name
-                
+
             for entry in messages:
 
                 # find the oldest entry in current response
@@ -170,29 +180,65 @@ class SlackArchiver(object):
 
         logentry = ""
 
+        # we want to retain only the messages
         if history_entry['type'] == "message":
             #do message
             timestamp = self.format_ts(history_entry['ts'])
 
+            # extract the user who posted the message
             if "user" in history_entry:
                 user_id = history_entry['user']
                 try:
+                    # look up the user in our user object
                     user = self.users[user_id]
                     username = user['name']
                 except KeyError:
+                    # if we don't find the user then just use the user_id
                     username = user_id
             else:
                 username = "none"
 
+            # get the verbose channel name
             channel = self.channels[channel_id]
             channel_name = channel['name']
 
 
-            logentry = timestamp +": <" + username + "> " + history_entry['text']
+
+
+            parsed_text = self.resolve_usernames(history_entry['text'])
+            logentry = timestamp +": <" + username + "> " + parsed_text
         else:
             print "History type: " + history_entry['type'] + " => " + history_entry['text']
 
         return logentry
+
+
+    def process_subtype_file_share(self, message):
+        """this method formats the output for subtype file_share"""
+
+    def get_name_for_id(self, userid):
+
+        username = "none"
+        try:
+            # look up the user in our user object
+            user = self.users[userid]
+            username = user['name']
+        except KeyError:
+            # if we don't find the user then just use the user_id
+            username = userid
+        return username
+
+
+    def resolve_usernames(self, textmessage):
+        t = textmessage
+        p = re.compile('<@(\w*)>')
+        usernames = p.findall(t)
+        print "Length of matches: " + str(len(usernames))
+        for userid in usernames:
+            t = t.replace(userid , self.get_name_for_id(userid))
+
+        return t
+
 
 
     def load_channel_timestamps(self):
@@ -212,7 +258,7 @@ class SlackArchiver(object):
 
 
     def write_channel_timestamps(self):
-
+        """write the dictionary of timestamps of the channels to a file so we can start where we've left off next time"""
         with open('channel.history', 'w') as outfile:
                 json.dump(self.history, outfile )
                 outfile.close()
