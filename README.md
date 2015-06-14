@@ -1,9 +1,16 @@
 slack-archiver
 =============
-This is an archiver for your Slack account. The idea is the archive the content
+This is an archiver for your Slack account. The idea is to archive the content
 of all channels in regular intervals for you to keep a local copy.
 
 It's based on the Python code of the [SlackClient](https://github.com/slackhq/python-slackclient) provided by Slack from
+
+The script will write a logfile per channel and keeps a statefile of when it
+fetched the last messages from the channels. So it can pickup on subsequent runs
+where it has left off last time. This reduces the number of API calls.
+
+A separate file is written which contains all URLs from all channel messages as
+an aggregated link archive.
 
 
 Dependencies
