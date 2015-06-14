@@ -185,26 +185,22 @@ class SlackArchiver(object):
             #do message
             timestamp = self.format_ts(history_entry['ts'])
 
+            if "subtype" in history_entry:
+                subtype = history_entry['subtype']
+                print "subtype: " + subtype
+
+
             # extract the user who posted the message
             if "user" in history_entry:
                 user_id = history_entry['user']
-                try:
-                    # look up the user in our user object
-                    user = self.users[user_id]
-                    username = user['name']
-                except KeyError:
-                    # if we don't find the user then just use the user_id
-                    username = user_id
+                username = self.get_name_for_id(user_id)
             else:
                 username = "none"
 
             # get the verbose channel name
             channel = self.channels[channel_id]
             channel_name = channel['name']
-
-
-
-
+            self.extract_urls(history_entry['text'])
             parsed_text = self.resolve_usernames(history_entry['text'])
             logentry = timestamp +": <" + username + "> " + parsed_text
         else:
@@ -213,8 +209,17 @@ class SlackArchiver(object):
         return logentry
 
 
-    def process_subtype_file_share(self, message):
+    def extract_urls(self, message):
         """this method formats the output for subtype file_share"""
+        p = re.compile('<http[s]?://.*>')
+        urls = p.findall(message)
+
+        linkfile =  codecs.open("linksammlung.archive.txt","a+", "utf-8")
+        for url in urls:
+            print "URL: " + url
+            linkfile.write(url + "\n")
+        linkfile.close()
+
 
     def get_name_for_id(self, userid):
 
@@ -233,7 +238,7 @@ class SlackArchiver(object):
         t = textmessage
         p = re.compile('<@(\w*)>')
         usernames = p.findall(t)
-        print "Length of matches: " + str(len(usernames))
+        # print "Length of matches: " + str(len(usernames))
         for userid in usernames:
             t = t.replace(userid , self.get_name_for_id(userid))
 
