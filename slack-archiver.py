@@ -200,10 +200,23 @@ class SlackArchiver(object):
             # get the verbose channel name
             channel = self.channels[channel_id]
             channel_name = channel['name']
-            self.extract_urls(history_entry['text'])
-            parsed_text = self.resolve_usernames(history_entry['text'])
+            try:
+                self.extract_urls(history_entry['text'])
+            except KeyError as e:
+                print "Problem with history_entry"
+                print history_entry
+
+            try:
+                parsed_text = self.resolve_usernames(history_entry['text'])
+            except KeyError as e:
+                print "Problem with history_entry"
+                print history_entry
+                username = "unkown"
+                parsed_text = "unknown"
+
             logentry = timestamp +": <" + username + "> " + parsed_text
         else:
+            
             print "History type: " + history_entry['type'] + " => " + history_entry['text']
 
         return logentry
@@ -216,7 +229,11 @@ class SlackArchiver(object):
 
         linkfile =  codecs.open("linksammlung.archive.txt","a+", "utf-8")
         for url in urls:
-            print "URL: " + url
+            if debug:
+                try:
+                    print "URL: " + url
+                except UnicodeEncodeError as e:
+                    print "Can't print URL as it contains special characters. URL but written to file."
             linkfile.write(url + "\n")
         linkfile.close()
 
