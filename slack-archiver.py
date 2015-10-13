@@ -127,7 +127,7 @@ class SlackArchiver(object):
             ts_oldest = 0
 
         # open the archive file for appending
-        archiveFile =  codecs.open(channel_name + ".archive.txt","a+", "utf-8")
+        archiveFile =  codecs.open(self.archive_root + channel_name + ".archive.txt","a+", "utf-8")
 
         while has_more:
             # if the channel_id is found in the history dictionary
